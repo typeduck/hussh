@@ -22,7 +22,7 @@ var client = hussh({
   host: "example.com",
   username: "foo",
   privateKey: require("fs").readFileSync("./my-secret.key")
-}, {encoding: "utf-8});
+}, {encoding: "utf-8"});
 
 // upload a string to a remote file
 client.uploadString("text for my file", "remote-file.txt", function(err){
