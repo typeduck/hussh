@@ -126,19 +126,18 @@ class hussh
   # when it's over
   execBuffer: (args...) ->
     task = @_execArgs(args)
-    # Create stdout, stderr buffers to stream into, function to compact later
-    buf = {stdout: [], stderr: []}
-    compactBuffer = (p) ->
-      isBuffer = buf[p].length and Buffer.isBuffer(buf[p][0])
-      buf[p] = if isBuffer then Buffer.concat(buf[p]) else buf[p].join("")
     # Execute command, capture data, call when finished
     @exec task.cmd, task.env, (err, stream) =>
       return task.done?(err) if err
-      stream.on "data", (s) -> buf.stdout.push(s)
-      stream.stderr.on "data", (s) -> buf.stderr.push(s)
-      stream.on "exit", (code) =>
-        compactBuffer(prop) for prop in ["stdout", "stderr"]
-        task.done?(@getError(code, task.cmd, task.env), buf)
+      stdoutBuf = []
+      stderrBuf = []
+      stream.on "data", (s) -> stdoutBuf.push(s)
+      stream.stderr.on "data", (s) -> stderrBuf.push(s)
+      stream.on "close", (code) =>
+        toSend =
+          stdout: compactBuffer(stdoutBuf)
+          stderr: compactBuffer(stderrBuf)
+        task.done?(@getError(code, task.cmd, task.env), toSend)
   
   # Simplified execution: when we want only access to the status code, not the
   # stream, and only want to get called on stream exit
@@ -166,3 +165,8 @@ class hussh
       stream.once("error", done)
       stream.end(sData, done)
     ).catch(done)
+
+# Helper which either concats buffers or joins strings for
+compactBuffer = (arr) ->
+  isBuffer = arr.length and Buffer.isBuffer(arr[0])
+  if isBuffer then Buffer.concat(arr) else arr.join("")
