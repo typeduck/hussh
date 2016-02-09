@@ -73,3 +73,65 @@ describe "hussh", () ->
           return done(err) if err
           res.stdout.should.equal(res2.stdout)
           done()
+
+# Promise API
+describe "hussh, Promisified", () ->
+  Promise = require("bluebird")
+  client = null
+  before () ->
+    privateKey = require("fs").readFileSync(CONFIG.HUSSHKEYFILE)
+    sshOpts =
+      hostname: CONFIG.HUSSHHOST
+      username: CONFIG.HUSSHUSER
+      privateKey: privateKey
+    opts =
+      encoding: "utf-8"
+      logFile: CONFIG.HUSSHLOGFILE
+    client = Promise.promisifyAll(hussh(sshOpts, opts))
+  after (done) -> client.disconnectAsync().asCallback(done)
+
+  it "should be able to make temporary directory", () ->
+    client.execAsync("mkdir -p #{CONFIG.HUSSHTEMPREMOTE}")
+
+  it "should connect to SSH server", () ->
+    @timeout(5000)
+    text = "hello, world: #{new Date()}\n"
+    fnLocal = "#{CONFIG.HUSSHTEMPLOCAL}/hello.txt"
+    fnRemote = "#{CONFIG.HUSSHTEMPREMOTE}/hello.txt"
+    client.uploadStringAsync(text, fnRemote).then(() ->
+      client.downloadAsync(fnRemote, fnLocal)
+    )
+
+  it "should handle ENV vars (and quote them for bash)", () ->
+    @timeout(5000)
+    env = {FOO: "a\"b\\c'd e!f?g$h@i*j~k|l`m"}
+    client.execBufferAsync("env", env).then((buffered) ->
+      stdout = buffered.stdout.split(/\r\n|\r|\n/)
+      fooline = stdout.filter((s) -> /^FOO=/.test(s))[0]
+      "FOO=#{env.FOO}".should.equal(fooline)
+    )
+
+  it "should give us an error for a bad command", () ->
+    cmd = "mkdir #{CONFIG.HUSSHTEMPREMOTE}/this/should/fail"
+    client.execStatusAsync(cmd).then(() ->
+      throw new Error("BADERROR")
+    )
+    .catch((err) ->
+      (err instanceof Error).should.be.true()
+      err.message.should.not.equal("BADERROR")
+    )
+
+  it "should give us return status OK for good execStatus", () ->
+    cmd = "ls #{CONFIG.HUSSHTEMPREMOTE}"
+    client.execStatusAsync(cmd)
+
+  it "should be able to connect/disconnect/re-connect", () ->
+    Promise.bind({}).then(() ->
+      client.execBufferAsync("ls")
+    ).then((@res) ->
+      client.disconnectAsync()
+    ).then(() ->
+      client.execBufferAsync("ls")
+    ).then((@res2) ->
+      @res.stdout.should.equal(@res2.stdout)
+    )

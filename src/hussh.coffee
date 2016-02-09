@@ -7,7 +7,7 @@ fs = require "fs"
 
 assign = require("lodash.assign")
 Client = require("ssh2").Client
-WHEN = require("when")
+Promise = require("bluebird")
 
 module.exports = (sshOpts, opts) -> new hussh(sshOpts, opts)
 
@@ -25,25 +25,43 @@ class hussh
     if @opts.logFile and not @opts.logStream
       @opts.logStream = fs.createWriteStream(@opts.logFile, {flags: "a"})
     # SSH/SFTP Connection
-    @ssh = null
-    @sftp = null
+    @_ssh = null
+    @_sshPromise = null
+    @_sftp = null
+    @_sftpPromise = null
 
   # Connects via SSH and saves the SSH Connection object
   connect: () ->
-    @ssh ?= WHEN.promise((resolve, reject) =>
-      client = new Client()
-      client.once("ready", () -> resolve(client))
-      client.once("error", reject)
-      client.connect(@sshOpts)
+    Promise.try(() =>
+      if @_ssh then return @_ssh
+      @_sshPromise ?= new Promise((resolve, reject) =>
+        client = new Client()
+        cleanup = () =>
+          @_sshPromise = null
+          client.removeListener("ready", onReady)
+          client.removeListener("error", onError)
+          client.removeListener("ready", cleanup)
+          client.removeListener("error", cleanup)
+        onReady = () => resolve(@_ssh = client)
+        onError = (e) => reject(e)
+        client.on("ready", cleanup)
+        client.on("error", cleanup)
+        client.on("ready", onReady)
+        client.on("error", onError)
+        client.connect(@sshOpts)
+      )
     )
   # Disonnects the SSH session
   disconnect: (done) ->
-    return done?() if not @ssh
+    return done?() if not @_ssh and not @_sshPromise
     if typeof done isnt "function" then done = ( -> )
     @connect().then((ssh) =>
-      ssh.once "close", () =>
-        @ssh = null
-        @sftp = null
+      cleanup = () =>
+        @_ssh = null
+        @_sftp = null
+        @_sshPromise = null
+        @_sftpPromise = null
+      ssh.once("close", cleanup)
       ssh.once("close", done).end()
     ).catch(done)
   
@@ -57,12 +75,14 @@ class hussh
   
   # Starts an SFTP session if one is not in progress
   sftpSession: () ->
-    @sftp ?= WHEN.promise((resolve, reject) =>
-      @connect().then((ssh) =>
-        ssh.sftp((err, sftp) =>
-          if err then reject(err) else resolve(sftp)
+    Promise.try(() =>
+      if @_sftp then return @_sftp
+      @_sftpPromise ?= @connect().then((ssh) =>
+        doit = Promise.promisify(ssh.sftp, {context: ssh})
+        doit().then((sftp) =>
+          return @_sftp = sftp
         )
-      ).catch(reject)
+      ).finally(() => @_sftpPromise = null)
     )
 
   # Fixes the arguments passed to exec

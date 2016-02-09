@@ -1,6 +1,6 @@
 {
     "name": "hussh",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "description": "SSH2 wrapper",
     "main": "js/hussh.js",
     "files": [
@@ -14,20 +14,20 @@
         "test": "./node_modules/.bin/mocha -b js/test.js"
     },
     "dependencies": {
-        "lodash.assign": "^3.2.0",
-        "ssh2": "^0.4.10",
-        "when": "^3.7.3"
+        "bluebird": "^3.2.2",
+        "lodash.assign": "^4.0.2",
+        "ssh2": "^0.4.13"
     },
     "devDependencies": {
-        "coffee-script": "^1.9.3",
+        "coffee-script": "^1.10.0",
         "convig": "^1.2.0",
-        "mocha": "^2.2.5",
-        "should": "^7.0.3"
+        "mocha": "^2.4.5",
+        "should": "^8.2.2"
     },
     "repository": {
         "type": "git",
         "url": "https://github.com/typeduck/hussh.git"
     },
     "author": "Ruquay K Calloway",
-    "license": "MIT License"
+    "license": "MIT"
 }
